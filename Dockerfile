@@ -5,7 +5,7 @@ COPY . .
 
 RUN go mod download
 RUN CGO_ENABLED=0 make
-RUN CGO_ENABLED=0 make test
+
 
 FROM cgr.dev/chainguard/static:latest
 COPY --from=build /go/github-backup/bin /

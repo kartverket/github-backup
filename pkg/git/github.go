@@ -52,6 +52,7 @@ func getRequest(rawUrl, authToken string) (*http.Response, error) {
 	}
 	req, err := http.NewRequest("GET", u.String(), nil)
 	if err != nil {
+		log.Error().Msgf("Could not GET '%s': %v", rawUrl, err)
 		return nil, err
 	}
 	req.Header = http.Header{
@@ -61,6 +62,7 @@ func getRequest(rawUrl, authToken string) (*http.Response, error) {
 	}
 	res, err := client.Do(req)
 	if err != nil {
+		log.Error().Msgf("%v", err)
 		return nil, err
 	}
 	return res, nil
