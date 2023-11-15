@@ -24,18 +24,21 @@ func ReposFor(org, authToken string) ([]Repo, error) {
 		var reposPart []Repo
 		res, err := getRequest(urlRaw, authToken)
 		if res.StatusCode != 200 {
-			log.Info().Msgf("got a %d from GitHub", res.StatusCode)
+			log.Error().Msgf("got a %d from GitHub", res.StatusCode)
 			return nil, err
 		}
 		if err != nil {
+			log.Error().Msgf("Request to '%s' filed: %v", urlRaw, err)
 			return nil, err
 		}
 		body, err := ioutil.ReadAll(res.Body)
 		if err != nil {
+			log.Error().Msgf("Error reading data from '%s': %v", urlRaw, err)
 			return nil, err
 		}
 		err = json.Unmarshal(body, &reposPart)
 		if err != nil {
+			log.Error().Msgf("Error unmarshaling data: ", err)
 			return nil, err
 		}
 		allRepos = append(allRepos, reposPart...)
@@ -48,6 +51,7 @@ func ReposFor(org, authToken string) ([]Repo, error) {
 func getRequest(rawUrl, authToken string) (*http.Response, error) {
 	u, err := url.Parse(rawUrl)
 	if err != nil {
+		log.Error().Msgf("Parsing url failed: %v", rawUrl)
 		return nil, err
 	}
 	req, err := http.NewRequest("GET", u.String(), nil)
