@@ -66,7 +66,7 @@ func getRequest(rawUrl, authToken string) (*http.Response, error) {
 	}
 	res, err := client.Do(req)
 	if err != nil {
-		log.Error().Msgf("%v", err)
+		log.Error().Msgf("Error in  Client.Do: %v", err)
 		return nil, err
 	}
 	return res, nil
