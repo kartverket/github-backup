@@ -1,12 +1,11 @@
-FROM cgr.dev/chainguard/go:latest as build
+FROM golang:alpine
 
-WORKDIR /go/github-backup
+WORKDIR /app
 COPY . .
 
 RUN go mod download
-RUN CGO_ENABLED=0 make
+RUN go build -o ./bin/github-backup ./cmd/github-backup/main.go
 
+USER 150:150
 
-FROM cgr.dev/chainguard/static:latest
-COPY --from=build /go/github-backup/bin /
-CMD ["/github-backup"]
+CMD ["./bin/github-backup"]
