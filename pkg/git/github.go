@@ -3,6 +3,7 @@ package git
 import (
 	"encoding/json"
 	"fmt"
+	"github-backup/pkg/metrics"
 	"github.com/rs/zerolog/log"
 	"github.com/tomnomnom/linkheader"
 	"io/ioutil"
@@ -12,11 +13,17 @@ import (
 
 type Repo struct {
 	FullName string `json:"full_name"`
+	PushedAt string `json:"pushed_at"`
+	Owner    struct {
+		Login string `json:"login"`
+	} `json:"owner"`
 }
 
 var client = http.Client{}
 
 func ReposFor(org, authToken string) ([]Repo, error) {
+	m := metrics.RepoCount.WithLabelValues(org)
+
 	urlRaw := fmt.Sprintf("https://api.github.com/orgs/%s/repos", org)
 	var allRepos []Repo
 	for urlRaw != "" {
@@ -42,6 +49,7 @@ func ReposFor(org, authToken string) ([]Repo, error) {
 			return nil, err
 		}
 		allRepos = append(allRepos, reposPart...)
+		m.Add(float64(len(reposPart)))
 		linkHeader := res.Header.Get("Link")
 		urlRaw = nextUrl(linkHeader)
 	}

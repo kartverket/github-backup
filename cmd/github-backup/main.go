@@ -4,9 +4,12 @@ import (
 	"cloud.google.com/go/storage"
 	"context"
 	"github-backup/pkg/git"
+	"github-backup/pkg/metrics"
 	"github-backup/pkg/objstorage"
 	"github-backup/pkg/zippings"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog/log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +22,16 @@ var basedir = filepath.Join(os.TempDir(), "ghbackup")
 const MaxConcurrent = 10
 
 func main() {
+	//metrics
+
+	http.Handle(
+		"/metrics",
+		promhttp.Handler(),
+	)
+	go func() {
+		err := http.ListenAndServe(":8080", nil)
+		log.Fatal().Msgf("%v", err)
+	}()
 
 	var bucketname string
 	var goog *storage.Client
@@ -38,7 +51,10 @@ func main() {
 		for _, org := range orgs {
 			str := []string{nfsShare, org}
 			path := strings.Join(str, "/")
-			os.RemoveAll(path)
+			err := os.RemoveAll(path)
+			if err != nil {
+				log.Error().Msgf("Error during cleanup: %v", err)
+			}
 		}
 		log.Info().Msgf("Using NFS storage on with directory '%s'", nfsShare)
 	}
@@ -50,7 +66,6 @@ func main() {
 		repos = append(repos, reposOrDie(org, githubToken)...)
 	}
 	log.Info().Msgf("found %d repos", len(repos))
-
 	if !nfsStorage {
 		goog, err := storage.NewClient(context.Background())
 		defer goog.Close()
@@ -68,17 +83,30 @@ func main() {
 		r := repo
 		workQueue <- 1
 		go func() {
+			var err error
+			var medium = "undefined"
+
 			if !nfsStorage {
-				err := cloneZipAndStoreInBucket(r.FullName, bucketname, userName, githubToken, goog)
+				medium = "gcs"
+				err = cloneZipAndStoreInBucket(r.FullName, bucketname, userName, githubToken, goog)
 				if err != nil {
 					log.Error().Msgf("failed to backup repo '%s': %v", r.FullName, err)
 				}
 			} else {
-				err := cloneZipAndStoreInFile(r.FullName, nfsShare, userName, githubToken)
+				medium = "nfs"
+				err = cloneZipAndStoreInFile(r.FullName, nfsShare, userName, githubToken)
 				if err != nil {
 					log.Error().Msgf("failed to backup repo '%s': %v", r.FullName, err)
 				}
 			}
+
+			if err != nil {
+				metrics.BackupFailureCount.WithLabelValues(r.Owner.Login, medium).Inc()
+			} else {
+				metrics.BackupSuccessCount.WithLabelValues(r.Owner.Login, medium).Inc()
+			}
+			metrics.BackupTotalCount.WithLabelValues(r.Owner.Login, medium).Inc()
+
 			<-workQueue
 			wg.Done()
 		}()
