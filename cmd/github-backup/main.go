@@ -1,20 +1,22 @@
 package main
 
 import (
-	"cloud.google.com/go/storage"
 	"context"
 	"github-backup/pkg/git"
 	"github-backup/pkg/metrics"
 	"github-backup/pkg/objstorage"
 	"github-backup/pkg/zippings"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/rs/zerolog/log"
+	"github-backup/pkg/nfs-cleanup"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	"cloud.google.com/go/storage"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/rs/zerolog/log"
 )
 
 var basedir = filepath.Join(os.TempDir(), "ghbackup")
@@ -58,7 +60,30 @@ func main() {
 		}
 		log.Info().Msgf("Using NFS storage on with directory '%s'", nfsShare)
 	}
+	if nfsStorage {
+		//Cleanup old files
+		files, err := nfscleanup.ListFiles(nfsShare)
+		if err != nil {
+			log.Error().Msgf("Error listing files: %v", err)
+		}
 
+		for _, file := range files {
+			fileAge, err := nfscleanup.FindFileAge(file)
+			if err != nil {
+				log.Error().Msgf("Error finding file age: %v", err)
+			}
+			if fileAge.Hours() > 168 {
+				err := os.Remove(file)
+				if err != nil {
+					log.Error().Msgf("Error removing file: %v", err)
+				} else {
+					log.Info().Msgf("File %s removed", file)
+				}
+			} else {
+				log.Info().Msgf("File %s is not old enough to be removed", file)
+			}
+		}
+	}
 	githubToken := envOrDie("GITHUB_TOKEN")
 
 	var repos []git.Repo
