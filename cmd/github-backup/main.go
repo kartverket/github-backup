@@ -4,12 +4,13 @@ import (
 	"context"
 	"github-backup/pkg/git"
 	"github-backup/pkg/metrics"
+	"github-backup/pkg/nfs-cleanup"
 	"github-backup/pkg/objstorage"
 	"github-backup/pkg/zippings"
-	"github-backup/pkg/nfs-cleanup"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -37,8 +38,10 @@ func main() {
 
 	var bucketname string
 	var goog *storage.Client
+	var timeToLive string
 
 	userName := envOrDie("GITHUB_USER")
+
 
 	orgsstring := envOrDie("ORG_NAMES")
 	orgs := strings.Split(orgsstring, ",")
@@ -48,6 +51,8 @@ func main() {
 
 	if !nfsStorage {
 		bucketname = envOrDie("BUCKET_NAME")
+
+
 	} else {
 		//Cleanup from failed runs.
 		for _, org := range orgs {
@@ -61,18 +66,25 @@ func main() {
 		log.Info().Msgf("Using NFS storage on with directory '%s'", nfsShare)
 	}
 	if nfsStorage {
+		timeToLive = envOrDie("TIME_TO_LIVE")
+		
 		//Cleanup old files
 		files, err := nfscleanup.ListFiles(nfsShare)
 		if err != nil {
 			log.Error().Msgf("Error listing files: %v", err)
 		}
-
+		ttl, err := strconv.ParseFloat(timeToLive, 64)
+			if err != nil {
+				log.Error().Msgf("Error parsing time to live (%v) this needs to be parsable as a float64 value", err)
+			}
+		log.Info().Msgf("Time-To-Live for files set to: %vh", ttl)
 		for _, file := range files {
 			fileAge, err := nfscleanup.FindFileAge(file)
 			if err != nil {
 				log.Error().Msgf("Error finding file age: %v", err)
 			}
-			if fileAge.Hours() > 168 {
+		
+			if fileAge.Hours() > ttl {
 				err := os.Remove(file)
 				if err != nil {
 					log.Error().Msgf("Error removing file: %v", err)
