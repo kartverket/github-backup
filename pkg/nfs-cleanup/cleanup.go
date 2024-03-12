@@ -24,6 +24,7 @@ func ListFiles(dir string) ([]string, error) {
 		log.Error().Msgf("Error walking the path %s: %v", dir, err)
 		return nil, err
 	}
+	log.Info().Msgf("Found %d files in %s", len(files), dir)
 	return files, nil
 }
 
