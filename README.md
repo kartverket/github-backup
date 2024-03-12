@@ -13,3 +13,4 @@ This service is run as a Job at set intervals. Needs the following environment v
 | BUCKET_NAME  | Name of GCS bucket                                    | Yes, if NFS_SHARE is NA   |
 | GITHUB_TOKEN | Token for connecting to Github                        | Yes                       | 
 | GITHUB_USER | Username to connect to Github | Yes |        
+| TIME_TO_LIVE | Time to live for the existing backup files (hours).   | Yes |
