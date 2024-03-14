@@ -67,7 +67,7 @@ func main() {
 	}
 	if nfsStorage {
 		timeToLive = envOrDie("TIME_TO_LIVE")
-		
+		fileList := []string{}
 		//Cleanup old files
 		files, err := nfscleanup.ListFiles(nfsShare)
 		if err != nil {
@@ -92,9 +92,10 @@ func main() {
 					log.Info().Msgf("File %s removed", file)
 				}
 			} else {
-				log.Info().Msgf("File %s is not old enough to be removed", file)
+				fileList = append(fileList, file)
 			}
 		}
+		log.Info().Msgf("Files remaining after cleanup: %v", len(fileList))
 	}
 	githubToken := envOrDie("GITHUB_TOKEN")
 
