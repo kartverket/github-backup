@@ -1,38 +1,11 @@
-# nonk8s
-apiVersion: "backstage.io/v1alpha1"
-kind: "Component"
+apiVersion: backstage.io/v1alpha1
+kind: Component
 metadata:
-  name: "github-backup"
+  name: github-backup
   tags:
-  - "internal"
+    - internal
 spec:
-  type: "ops"
-  lifecycle: "production"
-  owner: "skip"
-  system: "skip"
----
-apiVersion: "backstage.io/v1alpha1"
-kind: "Group"
-metadata:
-  name: "security_champion_github-backup"
-  title: "Security Champion github-backup"
-spec:
-  type: "security_champion"
-  parent: "it_security_champions"
-  members:
-  - "omaen"
-  children:
-  - "resource:github-backup"
----
-apiVersion: "backstage.io/v1alpha1"
-kind: "Resource"
-metadata:
-  name: "github-backup"
-  links:
-  - url: "https://github.com/kartverket/github-backup"
-    title: "github-backup på GitHub"
-spec:
-  type: "repo"
-  owner: "security_champion_github-backup"
-  dependencyOf:
-  - "component:github-backup"
+  type: ops
+  lifecycle: production
+  owner: skip
+  system: skip
