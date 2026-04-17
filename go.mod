@@ -4,7 +4,7 @@ go 1.25.1
 
 require (
 	cloud.google.com/go/storage v1.45.0
-	github.com/go-git/go-git/v5 v5.17.1
+	github.com/go-git/go-git/v5 v5.18.0
 	github.com/prometheus/client_golang v1.20.5
 	github.com/rs/zerolog v1.33.0
 	github.com/tomnomnom/linkheader v0.0.0-20180905144013-02ca5825eb80
