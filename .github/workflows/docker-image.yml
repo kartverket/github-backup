@@ -5,6 +5,7 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
@@ -15,17 +16,105 @@ jobs:
     runs-on: ubuntu-latest
     # Definerer rettigheter for jobben
     permissions:
-      contents: read
+      contents: write
       packages: write
+      pull-requests: read
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine next semantic version
+        id: version
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+
+          # Find the latest semantic version tag (fallback to 1.2.2 if no tags exist yet)
+          LATEST_TAG=$(git tag -l | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | sed 's/^v//' | sort -V | tail -n 1 || true)
+          if [ -z "${LATEST_TAG}" ]; then
+            LATEST_TAG="1.2.2"
+          fi
+
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          if ! PR_JSON=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" 2>/dev/null); then
+            PR_JSON="[]"
+          fi
+          PR_AUTHOR=$(echo "${PR_JSON}" | jq -r 'if type == "array" and length > 0 then .[0].user.login // "" else "" end')
+          PR_HEAD_REF=$(echo "${PR_JSON}" | jq -r 'if type == "array" and length > 0 then .[0].head.ref // "" else "" end')
+          PR_TITLE=$(echo "${PR_JSON}" | jq -r 'if type == "array" and length > 0 then .[0].title // "" else "" end')
+          PR_LABELS=$(echo "${PR_JSON}" | jq -r 'if type == "array" and length > 0 then [.[0].labels[]?.name // empty] | join(",") else "" end')
+
+          # Determine changed files in this push
+          if [ -n "${BEFORE_SHA}" ] && [ "${BEFORE_SHA}" != "0000000000000000000000000000000000000000" ] && git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
+            CHANGED_FILES=$(git diff --name-only "${BEFORE_SHA}" "${GITHUB_SHA}" || true)
+          else
+            CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r "${GITHUB_SHA}" || true)
+          fi
+
+          # Check if all changed files are package/dependency files
+          ONLY_DEP_FILES=false
+          if [ -n "${CHANGED_FILES}" ]; then
+            NON_DEP_FILES=$(echo "${CHANGED_FILES}" | grep -vE '^(go\.mod|go\.sum|Dockerfile|\.github/dependabot\.yml|\.github/workflows/.*)$' || true)
+            if [ -z "${NON_DEP_FILES}" ]; then
+              ONLY_DEP_FILES=true
+            fi
+          fi
+
+          # All PRs/commits with updates of packages or dependencies must trigger a patch version
+          IS_DEP_UPDATE=false
+          if [[ "${GITHUB_ACTOR}" == "dependabot[bot]" || "${GITHUB_ACTOR}" == "renovate[bot]" ]] || \
+             [[ "${PR_AUTHOR}" == "dependabot[bot]" || "${PR_AUTHOR}" == "renovate[bot]" ]] || \
+             [[ "${PR_HEAD_REF}" =~ ^(dependabot|renovate)/ ]] || \
+             [[ ",${PR_LABELS}," =~ ,(dependencies|go_modules|docker|github_actions), ]] || \
+             echo "${COMMIT_MSG}" | grep -qiE '(from [^ ]+/dependabot/|from [^ ]+/renovate/|^Bump .* from .* to |^(build|chore|fix)\(deps)' || \
+             echo "${PR_TITLE}" | grep -qiE '(^Bump .* from .* to |^(build|chore|fix)\(deps)' || \
+             [ "${ONLY_DEP_FILES}" = true ]; then
+            IS_DEP_UPDATE=true
+          fi
+
+          BUMP_TYPE="patch"
+          if [ "${IS_DEP_UPDATE}" = false ]; then
+            if [[ ",${PR_LABELS}," =~ ,(major|breaking), ]] || \
+               echo "${COMMIT_MSG} ${PR_TITLE}" | grep -qE '(#major|BREAKING CHANGE|^[a-zA-Z]+(\([^)]+\))?!:)'; then
+              BUMP_TYPE="major"
+            elif [[ ",${PR_LABELS}," =~ ,(minor|enhancement|feature), ]] || \
+                 echo "${COMMIT_MSG} ${PR_TITLE}" | grep -qE '(#minor|^feat(\([^)]+\))?:)'; then
+              BUMP_TYPE="minor"
+            fi
+          fi
+
+          IFS='.' read -r MAJOR MINOR PATCH <<< "${LATEST_TAG}"
+          case "${BUMP_TYPE}" in
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          echo "Latest version: ${LATEST_TAG}, bump type: ${BUMP_TYPE} (dependency update: ${IS_DEP_UPDATE}) -> new version: ${NEW_VERSION}"
+          echo "version=${NEW_VERSION}" >> "${GITHUB_OUTPUT}"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to the Container registry
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -39,15 +128,29 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=sha,format=long
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+            type=raw,value=${{ steps.version.outputs.version || '0.0.0-pr' }},enable=${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           # Pusher kun om det ikke er en pull request
-          push: ${{ github.event_name != 'pull_request' }} 
+          push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Create and push Git tag and Release
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${VERSION}" -m "Release ${VERSION}"
+          git push origin "${VERSION}"
+          gh release create "${VERSION}" --title "${VERSION}" --generate-notes
+
