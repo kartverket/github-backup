@@ -77,3 +77,12 @@ Prometheus metrics are exposed at `http://localhost:8080/metrics`.
 - `repo_backup_success_count`: Number of successful backups.
 - `repo_backup_failure_count`: Number of failed backups.
 - `repo_backup_total_count`: Total number of backup attempts.
+
+## Versioning
+
+New versions are released automatically on every push or merged pull request to `main` via GitHub Actions (`.github/workflows/docker-image.yml`). Each release creates a Git tag, a GitHub Release, and publishes the Docker image to `ghcr.io/kartverket/github-backup` tagged with the semantic version (`X.Y.Z`), `latest`, and `sha-<commit>`.
+
+- **Patch (`X.Y.Z+1`)**: Default for all merges to `main`. All package and dependency updates (Dependabot/Renovate PRs or changes to `go.mod`, `go.sum`, `Dockerfile`, and workflows) always trigger a patch version.
+- **Minor (`X.Y+1.0`)**: Triggered when a non-dependency PR has the `minor`, `enhancement`, or `feature` label, or when the commit message/PR title includes `feat:` or `#minor`.
+- **Major (`X+1.0.0`)**: Triggered when a non-dependency PR has the `major` or `breaking` label, or when the commit message/PR title includes `BREAKING CHANGE`, `!:`, or `#major`.
+
